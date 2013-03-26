@@ -2,7 +2,7 @@
 
 $PluginInfo['MailChimpIntegration'] = array(
 	'Name' => 'Mail Chimp Integration',
-	'Description' => 'Mail Chimp Integration Plugin. Autosubcribe new users.',
+	'Description' => 'Mail Chimp Integration Plugin. Autosubscribe new users.',
 	'Version' => '0.1',
 	'RequiredApplications' => array('Vanilla' => '2.1a1'),
 	'RequiredTheme' => FALSE,
