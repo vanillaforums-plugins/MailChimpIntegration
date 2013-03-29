@@ -1,6 +1,10 @@
 # MailChimp Integration plugin for Vanilla Forums
-Allow to autosubscribe new users to your MailChimp newsletter. Requires Vanilla >= 2.1 (2.0 should work but isn't tested)
+Allow to autosubscribe new users to your MailChimp newsletter. Requires Vanilla >= 2.0 (2.1 tested)
 
+## Bulk subscribe
+From version 0.2 it is possible to subscribe all existing forum users.
+
+## New user (connector)
 Probably works only with new users registered usign "classics" mode (no external FB,T,G+ connection provider). Feedback is welcome.
 
 ## Howto
