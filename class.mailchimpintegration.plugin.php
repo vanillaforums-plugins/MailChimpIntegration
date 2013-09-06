@@ -2,8 +2,8 @@
 
 $PluginInfo['MailChimpIntegration'] = array(
 	'Name' => 'Mail Chimp Integration',
-	'Description' => 'Mail Chimp Integration Plugin. Autosubscribe new users.',
-	'Version' => '0.2',
+	'Description' => 'Add a optin/optout checkbox at registration page or autosubscribe new users (double opt-in).',
+	'Version' => '0.3',
 	'RequiredApplications' => array('Vanilla' => '2.0'),
 	'RequiredTheme' => FALSE,
 	'RequiredPlugins' => FALSE,
@@ -15,7 +15,7 @@ $PluginInfo['MailChimpIntegration'] = array(
 	'License' => 'GPL v3'
 );
 
-class MailChimpIntegrationPlugin implements Gdn_IPlugin {
+class MailChimpIntegrationPlugin extends Gdn_Plugin {
 	
 	public function SettingsController_MailChimp_Create($Sender) {
 	        $Sender->Permission('Garden.Plugins.Manage');
@@ -23,16 +23,23 @@ class MailChimpIntegrationPlugin implements Gdn_IPlugin {
 		$Sender->Title('MailChimp Integration');
 		$ConfigurationModule = new ConfigurationModule($Sender);
 		$ConfigurationModule->RenderAll = True;
-		$Schema = array( 'Plugins.MailChimpIntegration.APIKey' => 
-				 array('LabelCode' => 'API Key', 
+		$Schema = array( 
+            'Plugins.MailChimpIntegration.APIKey' => 
+				array('LabelCode' => 'API Key', 
 				       'Control' => 'TextBox', 
 				       'Default' => C('Plugins.MailChimpIntegration.APIKey', '')
-				       ),
-			 	'Plugins.MailChimpIntegration.ListID' => 
-				 array('LabelCode' => 'List ID', 
+				),
+			'Plugins.MailChimpIntegration.ListID' => 
+				array('LabelCode' => 'List ID', 
 				       'Control' => 'TextBox', 
 				       'Default' => C('Plugins.MailChimpIntegration.ListID', '')
-				       )
+				),
+            'Plugins.MailChimpIntegration.Autosubscribe' => 
+                array(
+                    'LabelCode' => 'Auto subscribe new users (hide opt-in/out option at registration page).', 
+                    'Control' => 'CheckBox', 
+                    'Default' => C('Plugins.MailChimpIntegration.Autosubscribe', '')
+                )
 		);
 		$ConfigurationModule->Schema($Schema);
 		$ConfigurationModule->Initialize();
@@ -53,7 +60,8 @@ class MailChimpIntegrationPlugin implements Gdn_IPlugin {
 	  }
 	}
 
-	private function bulk($OptIn = TRUE) {//prevent spammy bug
+	private function bulk($OptIn = TRUE)
+    {//prevent spammy bug
 	  $EmailToSub = array();
 	  $Sender->UserData = Gdn::SQL()->Select('User.Email')->From('User')->OrderBy('User.Name')->Where('Deleted',false)->Get();
 	  foreach ($Sender->UserData->Result() as $User) {
@@ -94,31 +102,66 @@ class MailChimpIntegrationPlugin implements Gdn_IPlugin {
 	  }
 	}
 	
-	public function EntryController_RegistrationSuccessful_Handler($Sender){
-	  include_once(dirname(__FILE__) . DS . 'MCAPI' . DS .'MCAPI.class.php');
+	private function _SubscribeSingle($Controller, $EmailAddress, $ConfirmationEmail = TRUE)
+    {
+        if( !($Controller instanceof Controller) ) {
+            $Controller = Gdn::Controller();
+        }
 
-	  $EmailAddress = GetValue("Email", $Sender->Form->FormValues());
-	  $ApiKey = C('Plugins.MailChimpIntegration.APIKey', '');
-	  $ListID = C('Plugins.MailChimpIntegration.ListID', '');
-	  /*PHP < 5.5 compatibility http://php.net/manual/en/function.empty.php*/
-	  $ApiTrim = trim($ApiKey);
-	  if( empty($ApiTrim) ){
-	    //TODO:return an error
-	  }
-	  /* * */
+        include_once(dirname(__FILE__) . DS . 'MCAPI' . DS .'MCAPI.class.php');
 
-	  $Api = new MCAPI($ApiTrim);
+        $ApiKey = C('Plugins.MailChimpIntegration.APIKey', '');
+        $ListID = C('Plugins.MailChimpIntegration.ListID', '');
+        /*PHP < 5.5 compatibility http://php.net/manual/en/function.empty.php*/
+        $ApiTrim = trim($ApiKey);
+        if( empty($ApiTrim) ){
+            //Silent error, since is an admin issue
+        } else {
+            $Api = new MCAPI($ApiTrim);
+            // By default this sends a confirmation email - you will not see new members        
+            // until the link contained in it is clicked!                                      
+            $Retval = $Api->listSubscribe( $ListID, $EmailAddress, NULL, 'html', $ConfirmationEmail);
 
-	  // By default this sends a confirmation email - you will not see new members        
-	  // until the link contained in it is clicked!                                      
-	  $Retval = $Api->listSubscribe( $ListID, $EmailAddress);
-
-	  if ($Api->errorCode){
-	    $Sender->InformMessage(T('Subscription to our newsletter failed. Please try manually.') . T('ECODE=[') . $Api->errorCode . T('] EMSG=') . $Api->errorMessage);
-	  } else {
-	    $Sender->InformMessage(T('Please check our newsletter subscription confirmation email.'));
-	  }	  
+            if ($Api->errorCode){
+                $Controller->InformMessage(T('Subscription to our newsletter failed. Please try manually.') . T('ECODE=[') . $Api->errorCode . T('] EMSG=') . $Api->errorMessage);
+            } else {
+                if($ConfirmationEmail) {
+                    $Controller->InformMessage(T('Please check our newsletter subscription confirmation email.'));
+                }
+            }
+        }
 	}
+
+    public function UserModel_BeforeInsertUser_Handler($Sender)
+    {
+        if(C('Plugins.MailChimpIntegration.Autosubscribe')) {
+            //subscribe user using double optin email
+            $this->_SubscribeSingle(
+                $Sender, 
+                $Sender->EventArguments['User']['Email']
+            );
+        } else {
+            //subscribe only by user explicit request, no double optin email
+            if($Sender->EventArguments['User']['Plugins.MailChimpIntegration.OptIn']) {
+                $this->_SubscribeSingle(
+                    $Sender, 
+                    $Sender->EventArguments['User']['Email'],
+                    FALSE 
+                );
+            }
+        }
+    }
+
+   /**
+    * Replaces registration pages with custom pages (with optin/out selector)
+    */
+    public function EntryController_Render_Before($Sender)
+    {
+        if (strtolower($Sender->RequestMethod) == 'register' 
+            || strtolower($Sender->RequestMethod) == 'connect'){//only on registration/connect page
+            $Sender->View = $this->GetView(strtolower($Sender->View).'.php');
+        }
+    }
 	
 	public function Setup() {}
 }
