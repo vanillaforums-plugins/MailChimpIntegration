@@ -162,6 +162,7 @@ class MailChimpIntegrationPlugin extends Gdn_Plugin {
                 $Sender->Form->CheckBox('Plugins.MailChimpIntegration.OptIn', T('Subscribe to the newsletter'), array('checked' => TRUE)),
                 'li'
             );
+        }
     }
 
    /**
