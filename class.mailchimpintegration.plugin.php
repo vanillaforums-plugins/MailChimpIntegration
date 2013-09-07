@@ -1,9 +1,9 @@
 <?php if (!defined('APPLICATION')) exit();
 
 $PluginInfo['MailChimpIntegration'] = array(
-	'Name' => 'Mail Chimp Integration',
-	'Description' => 'Add a optin/optout checkbox at registration page or autosubscribe new users (double opt-in).',
-	'Version' => '0.3',
+	'Name' => 'MailChimp Integration',
+	'Description' => 'Add a optin/optout checkbox at registration page or autosubscribe new users (double opt-in) to your MailChimp newsletter.',
+	'Version' => '0.3.1',
 	'RequiredApplications' => array('Vanilla' => '2.0'),
 	'RequiredTheme' => FALSE,
 	'RequiredPlugins' => FALSE,
@@ -152,14 +152,28 @@ class MailChimpIntegrationPlugin extends Gdn_Plugin {
         }
     }
 
+    /**
+     * >= 2.1
+     */
+    public function EntryController_RegisterBeforePassword_Handler($Sender)
+    {
+        if(!C('Plugins.MailChimpIntegration.Autosubscribe')) {
+            echo Wrap(
+                $Sender->Form->CheckBox('Plugins.MailChimpIntegration.OptIn', T('Subscribe to the newsletter'), array('checked' => TRUE)),
+                'li'
+            );
+    }
+
    /**
-    * Replaces registration pages with custom pages (with optin/out selector)
+    * 2.0 only - Replaces registration pages with custom pages (with optin/out selector)
     */
     public function EntryController_Render_Before($Sender)
     {
-        if (strtolower($Sender->RequestMethod) == 'register' 
-            || strtolower($Sender->RequestMethod) == 'connect'){//only on registration/connect page
-            $Sender->View = $this->GetView(strtolower($Sender->View).'.php');
+        if(version_compare(C('Vanilla.Version'), '2.1', '<')) {
+            if (strtolower($Sender->RequestMethod) == 'register' 
+                || strtolower($Sender->RequestMethod) == 'connect'){//only on registration/connect page
+                $Sender->View = $this->GetView(strtolower($Sender->View).'.php');
+            }
         }
     }
 	
